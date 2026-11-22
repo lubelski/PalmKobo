@@ -69,6 +69,83 @@ static void testLayoutClaraBW() {
     CHECK_EQ(Layout::compute(100, 100, 160, 160, 60).scale, 0);
 }
 
+// Sony Clie NR70 series: 320x480, no silkscreen strip (Palm OS draws it in the LCD).
+static void testLayoutClie320x480() {
+    const Layout l = Layout::compute(1072, 1448, 320, 480, 0);
+    CHECK_EQ(l.scale, 2);
+    CHECK_EQ(l.lcd.w, 640);
+    CHECK_EQ(l.lcd.h, 960);
+    CHECK_EQ(l.lcd.x, 216);
+    CHECK(l.silk.empty());
+    CHECK(l.palm == l.lcd);
+    CHECK(l.bar.y >= l.palm.bottom());
+    CHECK(l.bar.bottom() <= 1448);
+
+    // The Palm block is narrow, so the bar uses the panel width instead.
+    CHECK_EQ(l.bar.x, Layout::GAP);
+    CHECK_EQ(l.bar.w, 1072 - 2 * Layout::GAP);
+    // ... while the 160x160 layouts keep a bar as wide as the Palm block.
+    const Layout m = Layout::compute(1072, 1448, 160, 160, 60);
+    CHECK_EQ(m.bar.x, m.lcd.x);
+    CHECK_EQ(m.bar.w, 960);
+
+    // Touch reaches every Palm pixel, including the status bar on the last rows.
+    int px = -1, py = -1;
+    CHECK(l.toPalm(l.lcd.x, l.lcd.y, px, py, false));
+    CHECK_EQ(px, 0);
+    CHECK_EQ(py, 0);
+    CHECK(l.toPalm(l.lcd.right() - 1, l.lcd.bottom() - 1, px, py, false));
+    CHECK_EQ(px, 319);
+    CHECK_EQ(py, 479);
+    CHECK(l.toPalm(l.lcd.x + 2 * 12 + 1, l.lcd.y + 2 * 466, px, py, false));
+    CHECK_EQ(px, 12);
+    CHECK_EQ(py, 466);
+    CHECK(!l.toPalm(l.lcd.x - 1, l.lcd.y, px, py, false));
+    CHECK(l.toPalm(2000, 2000, px, py, true));
+    CHECK_EQ(px, 319);
+    CHECK_EQ(py, 479);
+}
+
+// The Clie's 16-bit colour screen arrives as a 320x480 frame of 4 bytes per pixel.
+static void testConvertFrameColor320x480() {
+    const Layout l = Layout::compute(1072, 1448, 320, 480, 0);
+    Canvas c(1072, 1448, 0x80);
+
+    std::vector<uint8_t> buf(320 * 480 * 4, 0xff);  // white
+    auto put = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+        uint8_t* p = &buf[(static_cast<size_t>(y) * 320 + x) * 4];
+        p[0] = r, p[1] = g, p[2] = b;
+    };
+    put(0, 0, 0, 0, 0);
+    put(319, 479, 0, 0, 0);
+    put(1, 0, 255, 0, 0);
+    put(2, 0, 0, 255, 0);
+
+    LcdFrame f;
+    f.bpp = 24;
+    f.lineWidth = 320;
+    f.lines = 480;
+    f.bytesPerLine = 320 * 4;
+    f.firstDirtyLine = 0;
+    f.lastDirtyLine = 479;
+    f.buffer = buf.data();
+
+    CHECK(convertFrame(f, c, l) == l.lcd);
+    CHECK_EQ(c.at(l.lcd.x, l.lcd.y), 0x00);
+    CHECK_EQ(c.at(l.lcd.x + 1, l.lcd.y + 1), 0x00);  // 2x2 block
+    CHECK_EQ(c.at(l.lcd.x + 2, l.lcd.y), lumaRGB(255, 0, 0));
+    CHECK_EQ(c.at(l.lcd.x + 4, l.lcd.y), lumaRGB(0, 255, 0));
+    CHECK(lumaRGB(255, 0, 0) < lumaRGB(0, 255, 0));  // red reads darker than green
+    CHECK_EQ(c.at(l.lcd.x + 6, l.lcd.y), 0xff);
+    CHECK_EQ(c.at(l.lcd.right() - 1, l.lcd.bottom() - 1), 0x00);
+    CHECK_EQ(c.at(l.lcd.right(), l.lcd.bottom() - 1), 0x80);  // nothing outside the LCD
+    CHECK_EQ(c.at(l.lcd.x, l.lcd.bottom()), 0x80);
+
+    // A frame of another size (mid mode switch) is skipped.
+    f.lines = 320;
+    CHECK(convertFrame(f, c, l).empty());
+}
+
 static void testToPalm() {
     const Layout l = Layout::compute(1072, 1448, 160, 160, 60);
     int px = -1, py = -1;
@@ -509,6 +586,14 @@ static void testKeyDecoder() {
     CHECK(x < 30 && y >= 190 && y < 220);
     silkIconPosition(SilkIcon::Calc, x, y);
     CHECK(x > 130 && y >= 160 && y < 190);
+
+    // NR70: status bar icons along the bottom of the 320x480 screen; no blind Calc tap.
+    CHECK(silkIconPositionNR70(SilkIcon::Home, x, y));
+    CHECK(x < 24 && y >= 452 && y < 480);
+    const int homeX = x;
+    CHECK(silkIconPositionNR70(SilkIcon::Menu, x, y) && x > homeX);
+    CHECK(silkIconPositionNR70(SilkIcon::Find, x, y) && x < 80);
+    CHECK(!silkIconPositionNR70(SilkIcon::Calc, x, y));
 }
 
 static void testClassifyDevice() {
@@ -638,6 +723,8 @@ static void testIdlePolicy() {
 
 int main() {
     testLayoutClaraBW();
+    testLayoutClie320x480();
+    testConvertFrameColor320x480();
     testToPalm();
     testMapTouch();
     testUnpack();

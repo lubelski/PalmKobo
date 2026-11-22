@@ -106,7 +106,11 @@ struct Layout {
         l.lcd = {x0, y0, blockW, palmH * scale};
         l.silk = silkH > 0 ? Rect{x0, y0 + palmH * scale, blockW, silkH * scale} : Rect{};
         l.palm = {x0, y0, blockW, blockH};
-        l.bar = {x0, y0 + blockH + GAP, blockW, barH};
+        // The bar is as wide as the Palm block, unless that is narrow (a 320x480
+        // Clie only fits at a small scale): then it uses the panel width, so the
+        // nine buttons keep readable labels.
+        const int barW = blockW < screenW * 3 / 4 ? screenW - 2 * GAP : blockW;
+        l.bar = {(screenW - barW) / 2, y0 + blockH + GAP, barW, barH};
         return l;
     }
 

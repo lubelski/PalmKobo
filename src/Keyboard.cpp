@@ -74,6 +74,24 @@ void silkIconPosition(SilkIcon icon, int& x, int& y) {
     }
 }
 
+bool silkIconPositionNR70(SilkIcon icon, int& x, int& y) {
+    y = 466;
+    switch (icon) {
+        case SilkIcon::Home:
+            x = 12;
+            return true;
+        case SilkIcon::Menu:
+            x = 35;
+            return true;
+        case SilkIcon::Find:
+            x = 58;
+            return true;
+        case SilkIcon::Calc:
+            break;
+    }
+    return false;
+}
+
 void KeyDecoder::feed(unsigned type, unsigned code, int value, std::vector<KeyAction>& out) {
     if (type != EV_KEY) return;
 

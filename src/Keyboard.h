@@ -67,6 +67,12 @@ uint16_t usKeymap(unsigned code, bool shift, bool capsLock);
 // the m500 and other 160x160 devices).
 void silkIconPosition(SilkIcon icon, int& x, int& y);
 
+// The same for the Sony Clie NR70 series (320x480, no silkscreen strip): centres of
+// the Home, Menu and Find icons in the status bar that Palm OS draws along the bottom
+// of the screen. Returns false for Calc, which only exists in the collapsible soft
+// Graffiti area, where a blind tap could hit the running app instead.
+bool silkIconPositionNR70(SilkIcon icon, int& x, int& y);
+
 }  // namespace pk
 
 #endif
