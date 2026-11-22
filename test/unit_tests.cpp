@@ -555,6 +555,33 @@ static void testClassifyDevice() {
     CHECK(classifyDevice(ev, abs, key) == DeviceKind::Ignore);
 }
 
+static void testTouchTestExitRect() {
+    // Clara BW: a quarter of the width, centred.
+    const int W = 1072, H = 1448;
+    const Rect r = touchTestExitRect(W, H);
+    CHECK_EQ(r.w, 268);
+    CHECK(r.contains(W / 2, H / 2));
+    CHECK_EQ(r.x, W - r.right());
+    CHECK_EQ(r.y, H - r.bottom());
+
+    // Clear of the text above (ends near h/4 + 42p, p = 5) and below (h*3/4 - 12p).
+    CHECK(r.y > H / 4 + 42 * 5 + 20);
+    CHECK(r.bottom() < H * 3 / 4 - 12 * 5 - 20);
+
+    // A tap at the physical centre lands inside whatever the touch transform is.
+    for (int m = 0; m < 8; m++) {
+        int x, y;
+        mapTouch(2048, 2048, {0, 4095}, {0, 4095}, {(m & 1) != 0, (m & 2) != 0, (m & 4) != 0}, W, H, x, y);
+        CHECK(r.contains(x, y));
+    }
+
+    // Outside: the corners used for the test itself.
+    CHECK(!r.contains(30, 30));
+    CHECK(!r.contains(W - 30, H - 30));
+    CHECK(!r.contains(r.x - 1, H / 2));
+    CHECK(!r.contains(W / 2, r.bottom()));
+}
+
 static void testIdlePolicy() {
     using A = IdlePolicy::Action;
     IdlePolicy::Params p;  // autosave 5 min, quiet 10 s, exit 15 min, warn 60 s
@@ -626,6 +653,7 @@ int main() {
     testKeymap();
     testKeyDecoder();
     testClassifyDevice();
+    testTouchTestExitRect();
     testIdlePolicy();
 
     std::printf("%d checks, %d failures\n", checks, failures);

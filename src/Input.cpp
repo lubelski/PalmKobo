@@ -226,6 +226,10 @@ std::string Input::scan(bool initial) {
                 report += std::string("power key: ") + path + " \"" + name + "\"\n";
                 break;
             case DeviceKind::Ignore:
+                // Logged once at startup, to diagnose a power button that is not seen.
+                if (initial)
+                    report += std::string("ignored: ") + path + " \"" + name + "\" KEY_POWER=" +
+                              (testBit(keyBits, KEY_POWER) ? "yes" : "no") + "\n";
                 ::close(fd);
                 continue;
         }

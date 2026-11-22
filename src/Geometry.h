@@ -161,6 +161,14 @@ inline void mapTouch(int rx, int ry, AxisRange ax, AxisRange ay, const TouchTran
     if (t.mirrorY) sy = screenH - 1 - sy;
 }
 
+// The EXIT button of the touch-test screen. It is centred on the panel because
+// the centre is the one spot that maps to itself when the touch axes are swapped
+// or mirrored, so it stays reachable while touch is still misconfigured.
+inline Rect touchTestExitRect(int screenW, int screenH) {
+    const int w = screenW / 4, h = screenW / 6;
+    return {(screenW - w) / 2, (screenH - h) / 2, w, h};
+}
+
 }  // namespace pk
 
 #endif

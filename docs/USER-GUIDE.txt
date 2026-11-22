@@ -48,8 +48,8 @@ INSTALLING
 5. Eject the Kobo. NickelMenu now has "PalmOS" and "PalmOS input test".
 
 6. Run "PalmOS input test" first. Tap near each corner of the screen: the
-   cross must appear under your finger. Press the Kobo's power button to
-   leave the test. (If the cross is in the wrong place, see TROUBLESHOOTING.)
+   cross must appear under your finger. Tap EXIT in the middle of the
+   screen, or press the Kobo's power button, to leave the test. (If the cross is in the wrong place, see TROUBLESHOOTING.)
 
 7. Run "PalmOS". The first start boots the Palm from the ROM and takes you
    through Palm OS setup (pen calibration etc.).
