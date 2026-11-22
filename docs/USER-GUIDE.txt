@@ -59,19 +59,26 @@ USING IT
 --------
 
 The screen shows the Palm display, the Graffiti/silkscreen area below it,
-and a row of buttons:
+and a black strip of buttons, laid out as on a Palm:
 
-  DATE ADDR TODO MEMO   the Palm's four application buttons
-  ^  v                  the Palm's scroll rocker
-  RFSH                  full screen refresh (clears e-ink ghosting)
-  PWR                   the Palm's power button
-  EXIT                  tap twice to save and return to the Kobo
+  calendar, telephone      Date Book and Address
+  up / down arrows         the Palm's scroll buttons
+  checklist, notepad       To Do and Memo (Note Pad on an m500)
+  three bars (far right)   the palmkobo menu
+
+The menu opens over the Palm screen:
+
+  REFRESH SCREEN           full screen refresh (clears e-ink ghosting)
+  PALM POWER BUTTON        turns the Palm off or on
+  EXIT TO KOBO             save and return to the Kobo
+  CLOSE MENU               or tap anywhere outside the menu
 
 Write Graffiti in the box as you would with a stylus; your finger's trail is
 shown while you write. Tap the silkscreen icons (Home, Menu, Calc, Find)
 as usual.
 
-Leaving: tap EXIT twice, or press the Kobo's power button. Your Palm is saved
+Leaving: open the menu and tap EXIT TO KOBO. (On some Kobos the power button
+also exits; on others palmkobo cannot read it.) Your Palm is saved
 and the Kobo's own screen comes back. The next launch continues exactly where
 you left off.
 
@@ -164,9 +171,9 @@ The m515 keeps its own saved state (session-m515.img) and shares the SD card.
 
 A Sony Clie NR70 series ROM works the same way: copy it to
 .adds/palmkobo/nr70.rom and remove the # from the "PalmOS NR70" line. Its
-hi-res screen is shown smaller (about the size of the real Clie's), it draws
-its own Graffiti area at the bottom of the screen, and the jog dial and Back
-button are not available. It may run slowly on the Kobo.
+tall hi-res screen fills the Kobo's screen, with the buttons down the right-hand
+side instead of along the bottom. It draws its own Graffiti area at the bottom
+of the screen, and the jog dial and Back button are not available. It may run slowly on the Kobo.
 
 
 SETTINGS
@@ -218,7 +225,7 @@ Keyboard does nothing
     Check "PalmOS input test", and look for "keyboard connected" in the log.
 
 The screen looks smeary or ghosted
-    Tap RFSH (or press F9).
+    Open the menu and tap REFRESH SCREEN (or press F9).
 
 Start the Palm from scratch
     Delete .adds/palmkobo/session.img (your Palm's saved state).

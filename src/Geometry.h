@@ -50,8 +50,11 @@ struct Rect {
 //   +-------------------------+
 //   |  silkscreen (Graffiti)  |
 //   +-------------------------+
-//   |  hardware button bar    |
+//   |  hardware button strip  |
 //   +-------------------------+
+//
+// A screen that is tall for the panel instead gets the full height, with the same
+// buttons stacked in a rail on its right (see compute()).
 //
 // The LCD and silkscreen form one contiguous block because the Palm digitizer
 // covers both: palm y in [0, lcdH) is the LCD, [lcdH, lcdH + silkH) the silkscreen.
@@ -64,11 +67,13 @@ struct Layout {
     Rect lcd;     // emulated LCD
     Rect silk;    // emulated silkscreen / Graffiti area (may be empty)
     Rect palm;    // lcd + silk (the digitizer)
-    Rect bar;     // our button bar
+    Rect bar;     // our controls: a strip below the Palm, or a rail beside it
+    bool rail{false};
 
     static constexpr int GAP = 8;
     static constexpr int MIN_BAR = 80;
     static constexpr int MAX_BAR = 160;
+    static constexpr int EDGE = 4;  // margin around the Palm block in the rail layout
 
     // forcedScale <= 0 picks the largest integer scale that fits.
     // Returns a layout with scale == 0 if nothing fits.
@@ -91,7 +96,27 @@ struct Layout {
         const int byW = (screenW - 2 * GAP) / palmW;
         const int byH = (screenH - MIN_BAR - 3 * GAP) / digH;
         int scale = std::min(byW, byH);
-        if (forcedScale > 0) scale = std::min(scale, forcedScale);
+        // Alternative for tall screens (a 320x480 Clie): the Palm block uses the whole
+        // height and the controls go in a rail to its right. Chosen only when that
+        // allows a larger scale than the strip below does.
+        int railScale = std::min((screenW - 2 * EDGE - GAP - MIN_BAR) / palmW, (screenH - 2 * EDGE) / digH);
+        if (forcedScale > 0) {
+            scale = std::min(scale, forcedScale);
+            railScale = std::min(railScale, forcedScale);
+        }
+        if (railScale > scale) {
+            l.scale = railScale;
+            l.rail = true;
+            const int blockW = palmW * railScale, blockH = digH * railScale;
+            const int railW = std::min(screenW - 2 * EDGE - GAP - blockW, MAX_BAR);
+            const int x0 = (screenW - (blockW + GAP + railW)) / 2;
+            const int y0 = (screenH - blockH) / 2;
+            l.lcd = {x0, y0, blockW, palmH * railScale};
+            l.silk = silkH > 0 ? Rect{x0, y0 + palmH * railScale, blockW, silkH * railScale} : Rect{};
+            l.palm = {x0, y0, blockW, blockH};
+            l.bar = {x0 + blockW + GAP, y0, railW, blockH};
+            return l;
+        }
         if (scale < 1) {
             l.scale = 0;
             return l;
@@ -107,8 +132,8 @@ struct Layout {
         l.silk = silkH > 0 ? Rect{x0, y0 + palmH * scale, blockW, silkH * scale} : Rect{};
         l.palm = {x0, y0, blockW, blockH};
         // The bar is as wide as the Palm block, unless that is narrow (a 320x480
-        // Clie only fits at a small scale): then it uses the panel width, so the
-        // nine buttons keep readable labels.
+        // Clie forced to a small scale): then it uses the panel width, so the
+        // buttons are not cramped.
         const int barW = blockW < screenW * 3 / 4 ? screenW - 2 * GAP : blockW;
         l.bar = {(screenW - barW) / 2, y0 + blockH + GAP, barW, barH};
         return l;

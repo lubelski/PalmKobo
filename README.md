@@ -13,9 +13,15 @@ from NickelMenu.
 +--------------------------+
 | Graffiti silkscreen (x6) |   tap the icons, write in the box
 +--------------------------+
-|DATE|ADDR|TODO|MEMO|^|v|RFSH|PWR|EXIT|  Palm keys + refresh
+| (D) (A)  ( ^ | v )  (T) (M)   [=] |  Palm keys (white on black) + menu
 +--------------------------+
 ```
+
+The strip has the Palm's keys as icons, arranged as on a Palm: Date Book and
+Address, the scroll keys, To Do and Memo. The square button at the right opens
+palmkobo's own menu over the Palm screen: refresh, the Palm's power button,
+exit. A screen that is tall for the panel (a 320×480 Clie) gets the full
+height instead, with the same buttons in a rail down the right-hand side.
 
 ## Status
 
@@ -162,11 +168,17 @@ upstream commits in `SOURCES.txt` complete the corresponding source. Bump
    or press the Kobo's power button, to leave the test.
 5. NickelMenu → **PalmOS**.
 
-**RFSH** does a full flashing redraw of the screen, to clear e‑ink ghosting.
-It's handled by palmkobo; the Palm never sees it.
+**The menu** (the square button with three bars) covers part of the Palm
+screen while it is open. Taps go to the menu only; a tap outside it closes it.
 
-**Leaving:** tap **EXIT** twice, or press the Kobo's power button. Both save
-the Palm to `session.img` and put the Kobo's screen back as it was. The next
+- **Refresh screen** does a full flashing redraw, to clear e‑ink ghosting.
+  It's handled by palmkobo; the Palm never sees it.
+- **Palm power button** turns the Palm off or on.
+- **Exit to Kobo** leaves at once: opening the menu is the confirmation.
+
+**Leaving:** open the menu and tap **Exit to Kobo**. The Kobo's power button
+also exits, on Kobos where palmkobo can read it (on some, another process holds
+the button; the log then says `grab failed`). Both save the Palm to `session.img` and put the Kobo's screen back as it was. The next
 launch resumes exactly where you were. Delete `session.img` to cold-boot again.
 
 Everything palmkobo prints goes to `.adds/palmkobo/palmkobo.log`.
@@ -196,7 +208,7 @@ PalmOS. palmkobo finds connected keyboards on startup, and checks again every
 | F6 or Home | Applications launcher (Home icon) |
 | F7 | Find |
 | F8 | Calculator |
-| F9 | full screen refresh (same as the RFSH button) |
+| F9 | full screen refresh (same as Refresh screen in the menu) |
 
 Page-turn remotes, which only send Page Up/Down, also work and drive the scroll
 rocker. Ctrl/Alt shortcuts aren't passed through: Palm OS command strokes need
@@ -242,10 +254,10 @@ Settings: `card`, `card_size_mb`, `card_import_dir`, `card_export_dir` in
 - **Autosave** (`autosave_minutes`, default 5): if you've used the Palm since
   the last save, palmkobo saves the session and SD card at most every 5
   minutes. It waits for a 10‑second pause in your typing or tapping, so a save
-  never interrupts you. "SAVING..." shows briefly in the button bar.
+  never interrupts you. "SAVING..." shows briefly across the Palm screen.
 - **Idle exit** (`idle_exit_minutes`, default 15): after 15 minutes without a
   tap or keypress, palmkobo saves everything and returns to the Kobo, which can
-  then go to sleep as usual. One minute before, the button bar shows a warning;
+  then go to sleep as usual. One minute before, a warning appears across the Palm screen;
   tap the screen or press a key to stay. That tap only dismisses the warning
   and isn't passed to the Palm.
 
@@ -261,16 +273,18 @@ with `rom=nr70.rom device=NR70 session=session-nr70.img`.
 
 What is different from the m500:
 
-- **Screen:** 320×480 in 16-bit colour, shown in grays. On a Clara BW it only
-  fits at 2× (640×960), about the size of the real Clie's screen. The button
-  bar uses the full panel width so its labels stay readable.
+- **Screen:** 320×480 in 16-bit colour, shown in grays. On a Clara BW it runs
+  at 3× (960×1440) and fills the panel, with the buttons in a rail on the
+  right. `scale = 2` in `palmkobo.ini` gives the smaller picture with the
+  strip below it.
 - **Silkscreen:** the Clie has no printed Graffiti area. Palm OS draws a soft
   one, and a status bar, at the bottom of its own screen, so palmkobo draws no
   silkscreen art and no Graffiti echo. Palm OS draws the stroke itself.
 - **Keyboard:** Esc/F5 (Menu), F6/Home and F7 (Find) tap the icons in the
   status bar. F8 (Calculator) does nothing, because that icon only exists in
   the soft Graffiti area, which apps can collapse.
-- **Buttons:** the bar's four app keys, scroll keys and power work. The jog
+- **Buttons:** the four app keys and the scroll keys work. The menu's Palm
+  power button has no effect on the emulated NR70. The jog
   dial and the Back button are not available: CloudpilotEmu has no input
   events for them.
 - **Card:** `card.img` is inserted as a Memory Stick. The same image works for
@@ -332,7 +346,9 @@ src/
   RefreshScheduler.h    when/where/how to refresh the e-ink panel
   IdlePolicy.h          autosave and idle-exit timing
   Canvas.h              off-screen gray canvas, line drawing, resampling
-  ButtonBar.cpp/.h      on-screen Palm hardware keys + tiny 5x7 font
+  ButtonBar.cpp/.h      on-screen Palm hardware keys (strip or rail) + tiny 5x7 font
+  Glyphs.h              one-bit icons for the keys and the menu
+  Menu.h                the overlay menu: refresh, Palm power, exit
   Input.cpp/.h          evdev touchscreen, power key, keyboards (with hotplug rescans)
   Keyboard.cpp/.h       keyboard -> Palm characters, buttons and silkscreen taps
   CardFs.cpp/.h         SD card images: create (mkfs), import, export, dirty-page saving

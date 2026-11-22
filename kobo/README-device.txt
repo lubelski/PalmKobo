@@ -5,11 +5,11 @@ palmkobo - Palm OS on your Kobo
 2. (Optional) Drop .prc / .pdb apps into the install folder.
 3. Eject the Kobo, open the NickelMenu and choose "PalmOS".
 
-Buttons along the bottom: DATE ADDR TODO MEMO are the Palm's four app keys,
-^ and v are the scroll rocker, RFSH redraws the screen (clears ghosting),
-PWR is the Palm's power key, EXIT (tap twice)
-saves the Palm and returns to the Kobo. The Kobo's own power button also
-saves and exits.
+Buttons along the bottom: calendar, telephone, checklist and notepad are the
+Palm's four app keys, the arrows are its scroll buttons. The square button with
+three bars opens a menu: REFRESH SCREEN (clears ghosting), PALM POWER BUTTON,
+and EXIT TO KOBO, which saves the Palm and returns to the Kobo. On some Kobos
+the Kobo's own power button also saves and exits.
 
 Keyboard: connect it in the Kobo's Bluetooth settings first, then launch.
 F1-F4 = app buttons, PgUp/PgDn = scroll, Esc = Menu, F6 = Home,

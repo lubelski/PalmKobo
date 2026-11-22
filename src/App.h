@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ButtonBar.h"
+#include "Menu.h"
 #include "Canvas.h"
 #include "Config.h"
 #include "Display.h"
@@ -50,7 +51,7 @@ class App {
     int run();
 
    private:
-    enum class Target { None, Palm, Bar, Swallow };
+    enum class Target { None, Palm, Bar, Menu, Swallow };
 
     bool startSession(std::string& error);
     void setupScreen();
@@ -75,6 +76,11 @@ class App {
     void ejectCard();
     void runFor(uint64_t ms);
     void showStatus(const std::string& text);
+    void hideStatus(uint64_t now);
+    void openMenu(uint64_t now);
+    void closeMenu(uint64_t now);
+    void menuAction(MenuAction action, uint64_t now);
+    void clearOverlay(uint64_t now);
 
     void scanInstallDir();
     void processInstalls(uint64_t now);
@@ -95,6 +101,12 @@ class App {
     Layout layout;
     bool softSilkNR70{false};  // Clie NR70: Palm OS draws the silkscreen inside the LCD
     ButtonBar bar;
+    Menu menu;
+    // Non-empty while the menu or a status message covers part of the Palm area.
+    // The LCD is not redrawn underneath until it is cleared again.
+    Rect overlay;
+    bool menuOpen{false};
+    int menuPressed{Menu::NONE};
     std::unique_ptr<RefreshScheduler> scheduler;
     std::unique_ptr<Frame> frame;
 
@@ -119,10 +131,6 @@ class App {
     bool echoActive{false};
     int echoX{0}, echoY{0};
     Rect echoDirty;
-
-    // Exit confirmation
-    uint64_t exitArmedAt{0};
-    bool exitArmed{false};
 
     // Virtual SD card
     CardImage* cardImage{nullptr};
