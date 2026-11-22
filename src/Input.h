@@ -28,7 +28,7 @@ struct InputBatch {
     std::vector<TouchEvent> touches;
     std::vector<KeyAction> keys;
     bool power{false};         // device power button released
-    std::vector<std::string> log;  // keyboards connected/disconnected
+    std::vector<std::string> log;  // lines for the log file, each ending in '\n'
 
     void clear() {
         touches.clear();
@@ -103,6 +103,7 @@ class Input {
     int touchFd{-1};
     std::string touchPath;
     std::vector<Device> powerKeys;
+    bool powerReadErrorLogged{false};
     std::vector<Device> keyboards;
     uint64_t lastScan{0};
 

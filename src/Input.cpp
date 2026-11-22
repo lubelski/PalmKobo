@@ -236,7 +236,8 @@ std::string Input::scan(bool initial) {
 
         // Grab so that Nickel (paused, but still holding the devices open) does not
         // receive a backlog of our taps and keystrokes when it is resumed.
-        if (grab) ioctl(fd, EVIOCGRAB, 1);
+        if (grab && ioctl(fd, EVIOCGRAB, 1) < 0)
+            report += std::string("grab failed: ") + path + " errno=" + std::to_string(errno) + "\n";
     }
 
     return report;
@@ -295,7 +296,8 @@ void Input::wait(int timeoutMs, InputBatch& batch) {
             if (it->fd != fd) continue;
             if (!drainKeyboard(*it, batch)) {
                 // Bluetooth keyboard went to sleep or disconnected.
-                batch.log.push_back("keyboard disconnected: " + it->path + " \"" + it->name + "\"");
+                batch.log.push_back("keyboard disconnected: " + it->path + " \"" + it->name +
+                                    "\"\n");
                 ::close(it->fd);
                 keyboards.erase(it);
             }
@@ -329,9 +331,22 @@ void Input::drainPower(int fd, InputBatch& batch) {
     input_event ev[64];
     for (;;) {
         const ssize_t n = read(fd, ev, sizeof(ev));
-        if (n <= 0) return;
-        for (size_t i = 0; i < static_cast<size_t>(n) / sizeof(input_event); i++)
+        if (n <= 0) {
+            // Logged once: a dead device keeps poll() returning, which would flood the log.
+            if (n < 0 && errno != EAGAIN && errno != EINTR && !powerReadErrorLogged) {
+                powerReadErrorLogged = true;
+                batch.log.push_back("power key read error: errno=" + std::to_string(errno) + "\n");
+            }
+            return;
+        }
+        for (size_t i = 0; i < static_cast<size_t>(n) / sizeof(input_event); i++) {
+            // Diagnostics: show what the power button actually sends.
+            if (ev[i].type != EV_SYN)
+                batch.log.push_back("power key event: type=" + std::to_string(ev[i].type) +
+                                    " code=" + std::to_string(ev[i].code) +
+                                    " value=" + std::to_string(ev[i].value) + "\n");
             if (ev[i].type == EV_KEY && ev[i].code == KEY_POWER && ev[i].value == 0) batch.power = true;
+        }
     }
 }
 
