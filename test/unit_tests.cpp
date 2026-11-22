@@ -17,6 +17,7 @@
 #include "IdlePolicy.h"
 #include "Input.h"
 #include "Keyboard.h"
+#include "Menu.h"
 #include "Pgm.h"
 #include "RefreshScheduler.h"
 
@@ -70,24 +71,24 @@ static void testLayoutClaraBW() {
 }
 
 // Sony Clie NR70 series: 320x480, no silkscreen strip (Palm OS draws it in the LCD).
+// Too tall for a strip below it at 3x, so the controls go in a rail on the right.
 static void testLayoutClie320x480() {
     const Layout l = Layout::compute(1072, 1448, 320, 480, 0);
-    CHECK_EQ(l.scale, 2);
-    CHECK_EQ(l.lcd.w, 640);
-    CHECK_EQ(l.lcd.h, 960);
-    CHECK_EQ(l.lcd.x, 216);
+    CHECK(l.rail);
+    CHECK_EQ(l.scale, 3);
+    CHECK_EQ(l.lcd.w, 960);
+    CHECK_EQ(l.lcd.h, 1440);
+    CHECK_EQ(l.lcd.x, 4);
+    CHECK_EQ(l.lcd.y, 4);
     CHECK(l.silk.empty());
     CHECK(l.palm == l.lcd);
-    CHECK(l.bar.y >= l.palm.bottom());
-    CHECK(l.bar.bottom() <= 1448);
-
-    // The Palm block is narrow, so the bar uses the panel width instead.
-    CHECK_EQ(l.bar.x, Layout::GAP);
-    CHECK_EQ(l.bar.w, 1072 - 2 * Layout::GAP);
-    // ... while the 160x160 layouts keep a bar as wide as the Palm block.
-    const Layout m = Layout::compute(1072, 1448, 160, 160, 60);
-    CHECK_EQ(m.bar.x, m.lcd.x);
-    CHECK_EQ(m.bar.w, 960);
+    // The rail: right of the Palm, same height, wide enough to touch (8 mm at 300 ppi).
+    CHECK(l.bar.x >= l.palm.right());
+    CHECK(l.bar.right() <= 1072);
+    CHECK_EQ(l.bar.y, l.palm.y);
+    CHECK_EQ(l.bar.h, l.palm.h);
+    CHECK(l.bar.w >= Layout::MIN_BAR);
+    CHECK_EQ(l.bar.w, 96);
 
     // Touch reaches every Palm pixel, including the status bar on the last rows.
     int px = -1, py = -1;
@@ -97,13 +98,37 @@ static void testLayoutClie320x480() {
     CHECK(l.toPalm(l.lcd.right() - 1, l.lcd.bottom() - 1, px, py, false));
     CHECK_EQ(px, 319);
     CHECK_EQ(py, 479);
-    CHECK(l.toPalm(l.lcd.x + 2 * 12 + 1, l.lcd.y + 2 * 466, px, py, false));
+    CHECK(l.toPalm(l.lcd.x + 3 * 12 + 1, l.lcd.y + 3 * 466, px, py, false));
     CHECK_EQ(px, 12);
     CHECK_EQ(py, 466);
-    CHECK(!l.toPalm(l.lcd.x - 1, l.lcd.y, px, py, false));
+    CHECK(!l.toPalm(l.bar.x, l.bar.y + 10, px, py, false));  // the rail is not the Palm
     CHECK(l.toPalm(2000, 2000, px, py, true));
     CHECK_EQ(px, 319);
     CHECK_EQ(py, 479);
+
+    // scale= in the ini still wins: at 2x it fits above a strip, which then uses
+    // the panel width because the Palm block is narrow.
+    const Layout f = Layout::compute(1072, 1448, 320, 480, 0, 2);
+    CHECK(!f.rail);
+    CHECK_EQ(f.scale, 2);
+    CHECK_EQ(f.lcd.x, 216);
+    CHECK(f.bar.y >= f.palm.bottom());
+    CHECK_EQ(f.bar.x, Layout::GAP);
+    CHECK_EQ(f.bar.w, 1072 - 2 * Layout::GAP);
+
+    // Screens that already fit at their best scale above a strip keep the strip:
+    // m500 / IIIc (160x160+60), hi-res with silkscreen (320x320+120), 240x320.
+    const Layout m = Layout::compute(1072, 1448, 160, 160, 60);
+    CHECK(!m.rail);
+    CHECK_EQ(m.scale, 6);
+    CHECK_EQ(m.bar.x, m.lcd.x);
+    CHECK_EQ(m.bar.y, 1336);
+    CHECK_EQ(m.bar.w, 960);
+    CHECK_EQ(m.bar.h, 104);
+    CHECK(!Layout::compute(1072, 1448, 320, 320, 120).rail);
+    CHECK(!Layout::compute(1072, 1448, 240, 320, 0).rail);
+    // No rail when there is no room for one beside the larger scale.
+    CHECK(!Layout::compute(980, 1448, 320, 480, 0).rail);
 }
 
 // The Clie's 16-bit colour screen arrives as a 320x480 frame of 4 bytes per pixel.
@@ -132,11 +157,11 @@ static void testConvertFrameColor320x480() {
 
     CHECK(convertFrame(f, c, l) == l.lcd);
     CHECK_EQ(c.at(l.lcd.x, l.lcd.y), 0x00);
-    CHECK_EQ(c.at(l.lcd.x + 1, l.lcd.y + 1), 0x00);  // 2x2 block
-    CHECK_EQ(c.at(l.lcd.x + 2, l.lcd.y), lumaRGB(255, 0, 0));
-    CHECK_EQ(c.at(l.lcd.x + 4, l.lcd.y), lumaRGB(0, 255, 0));
+    CHECK_EQ(c.at(l.lcd.x + 2, l.lcd.y + 2), 0x00);  // 3x3 block
+    CHECK_EQ(c.at(l.lcd.x + 3, l.lcd.y), lumaRGB(255, 0, 0));
+    CHECK_EQ(c.at(l.lcd.x + 6, l.lcd.y), lumaRGB(0, 255, 0));
     CHECK(lumaRGB(255, 0, 0) < lumaRGB(0, 255, 0));  // red reads darker than green
-    CHECK_EQ(c.at(l.lcd.x + 6, l.lcd.y), 0xff);
+    CHECK_EQ(c.at(l.lcd.x + 9, l.lcd.y), 0xff);
     CHECK_EQ(c.at(l.lcd.right() - 1, l.lcd.bottom() - 1), 0x00);
     CHECK_EQ(c.at(l.lcd.right(), l.lcd.bottom() - 1), 0x80);  // nothing outside the LCD
     CHECK_EQ(c.at(l.lcd.x, l.lcd.bottom()), 0x80);
@@ -428,29 +453,123 @@ static void testButtonBar() {
     const Layout l = Layout::compute(1072, 1448, 160, 160, 60);
     ButtonBar b;
     b.layout(l.bar);
-    CHECK_EQ(b.count(), 9);
+    CHECK(!b.vertical());
+    CHECK_EQ(b.count(), 7);
     for (int i = 0; i < b.count(); i++) {
         const Rect r = b.at(i).rect;
         CHECK(r.x >= l.bar.x && r.right() <= l.bar.right());
         CHECK_EQ(b.hit(r.x + r.w / 2, r.y + r.h / 2), i);
-        if (i > 0) CHECK(r.x >= b.at(i - 1).rect.right());
+        CHECK_EQ(b.hit(r.x, r.y), i);
+        CHECK_EQ(b.hit(r.right() - 1, r.bottom() - 1), i);
+        if (i > 0) CHECK_EQ(r.x, b.at(i - 1).rect.right());  // no dead gaps between cells
+        CHECK(r.w >= 96);  // at least 8 mm at 300 ppi
     }
     CHECK_EQ(b.hit(0, 0), -1);
-    CHECK_EQ(b.indexOf(BarAction::Exit), 8);
-    CHECK_EQ(b.indexOf(BarAction::Refresh), 6);
+    CHECK_EQ(b.hit(l.bar.x + 10, l.bar.y - 1), -1);
+    // Like a Palm: Date Book, Address, scroll up/down, To Do, Memo. Menu at the far right.
+    const BarAction order[] = {BarAction::App1, BarAction::App2, BarAction::Up,  BarAction::Down,
+                               BarAction::App3, BarAction::App4, BarAction::Menu};
+    for (int i = 0; i < 7; i++) CHECK(b.at(i).action == order[i]);
+    CHECK_EQ(b.indexOf(BarAction::Menu), 6);
+    CHECK_EQ(b.at(6).rect.right(), l.bar.right());
 
     Canvas c(1072, 1448);
     CHECK(b.draw(c) == l.bar);
-    // Some black pixels (border + label) inside the first button.
+    // White on black, and nothing but pure black and white (fast waveform).
     const Rect r0 = b.at(0).rect;
-    int dark = 0;
-    for (int y = r0.y; y < r0.bottom(); y++)
-        for (int x = r0.x; x < r0.right(); x++) dark += c.at(x, y) == BLACK;
-    CHECK(dark > 500);
+    int dark = 0, light = 0, gray = 0;
+    for (int y = l.bar.y; y < l.bar.bottom(); y++)
+        for (int x = l.bar.x; x < l.bar.right(); x++) {
+            const uint8_t v = c.at(x, y);
+            if (v != BLACK && v != WHITE) gray++;
+            if (r0.contains(x, y)) (v == BLACK ? dark : light)++;
+        }
+    CHECK_EQ(gray, 0);
+    CHECK(dark > light && light > 500);
+    CHECK_EQ(c.at(r0.x + 1, r0.y + 1), BLACK);
+    CHECK_EQ(c.at(l.bar.x - 1, l.bar.y), WHITE);  // nothing drawn outside the bar
 
+    // Pressed = inverted: the disc fills with white.
     b.at(0).pressed = true;
-    b.draw(c, 0);
-    CHECK_EQ(c.at(r0.x + r0.w / 2, r0.y + 5), BLACK);  // pressed = inverted background
+    CHECK(b.draw(c, 0) == r0);
+    int lightPressed = 0;
+    for (int y = r0.y; y < r0.bottom(); y++)
+        for (int x = r0.x; x < r0.right(); x++) lightPressed += c.at(x, y) == WHITE;
+    CHECK(lightPressed > 2 * light);
+    CHECK_EQ(c.at(r0.x + 1, r0.y + 1), BLACK);
+
+    // Rail beside a tall screen: the same buttons stacked, menu at the bottom.
+    const Layout t = Layout::compute(1072, 1448, 320, 480, 0);
+    ButtonBar v;
+    v.layout(t.bar);
+    CHECK(v.vertical());
+    CHECK_EQ(v.count(), 7);
+    const BarAction railOrder[] = {BarAction::App1, BarAction::App2, BarAction::App3, BarAction::App4,
+                                   BarAction::Up,   BarAction::Down, BarAction::Menu};
+    for (int i = 0; i < 7; i++) {
+        const Rect r = v.at(i).rect;
+        CHECK(v.at(i).action == railOrder[i]);
+        CHECK_EQ(r.x, t.bar.x);
+        CHECK_EQ(r.w, t.bar.w);
+        CHECK(r.h >= 96);
+        CHECK_EQ(v.hit(r.x + r.w / 2, r.y + r.h / 2), i);
+        if (i > 0) CHECK_EQ(r.y, v.at(i - 1).rect.bottom());
+    }
+    CHECK_EQ(v.at(6).rect.bottom(), t.bar.bottom());
+    CHECK_EQ(v.hit(t.palm.right() - 1, t.bar.y + 10), -1);
+    Canvas cv(1072, 1448);
+    CHECK(v.draw(cv) == t.bar);
+    CHECK_EQ(cv.at(t.palm.right() - 1, t.palm.y + 10), WHITE);  // the Palm area is untouched
+
+    // An empty bar has no buttons and hits nothing.
+    ButtonBar e;
+    e.layout({});
+    CHECK_EQ(e.count(), 0);
+    CHECK_EQ(e.hit(5, 5), -1);
+}
+
+static void testMenu() {
+    for (const Layout& l : {Layout::compute(1072, 1448, 160, 160, 60), Layout::compute(1072, 1448, 320, 480, 0)}) {
+        Menu m;
+        m.layout(l.palm);
+        const Rect p = m.panel();
+        // Inside the Palm area, so closing it only has to repaint the Palm screen.
+        CHECK(p == p.intersected(l.palm));
+        CHECK(!p.empty());
+        CHECK_EQ(m.count(), 4);
+        const MenuAction order[] = {MenuAction::Refresh, MenuAction::Power, MenuAction::Exit, MenuAction::Close};
+        for (int i = 0; i < m.count(); i++) {
+            const Rect r = m.at(i).rect;
+            CHECK(m.at(i).action == order[i]);
+            CHECK(r.h >= 130);
+            CHECK(r == r.intersected(p));
+            CHECK_EQ(m.hit(r.x + r.w / 2, r.y + r.h / 2), i);
+            CHECK_EQ(m.hit(r.x, r.y), i);
+            CHECK_EQ(m.hit(r.right() - 1, r.bottom() - 1), i);
+            if (i > 0) CHECK_EQ(r.y, m.at(i - 1).rect.bottom());
+        }
+        // Border of the panel: on the menu, but no row. Everything else is outside.
+        CHECK_EQ(m.hit(p.x, p.y), Menu::NONE);
+        CHECK_EQ(m.hit(p.x - 1, p.y + 10), Menu::OUTSIDE);
+        CHECK_EQ(m.hit(p.x + 10, p.bottom()), Menu::OUTSIDE);
+        CHECK_EQ(m.hit(l.bar.x + l.bar.w / 2, l.bar.y + l.bar.h / 2), Menu::OUTSIDE);
+        CHECK_EQ(m.hit(l.palm.x + 2, l.palm.y + 2), Menu::OUTSIDE);
+
+        Canvas c(1072, 1448, 0x80);
+        CHECK(m.draw(c) == p);
+        CHECK_EQ(c.at(p.x - 1, p.y), 0x80);       // nothing outside the panel
+        CHECK_EQ(c.at(p.x, p.bottom()), 0x80);
+        CHECK_EQ(c.at(p.x, p.y), BLACK);          // frame
+        const Rect r1 = m.at(1).rect;
+        CHECK_EQ(c.at(r1.right() - 2, r1.y + 2), WHITE);
+        m.draw(c, 1);
+        CHECK_EQ(c.at(r1.right() - 2, r1.y + 2), BLACK);  // pressed row inverts
+        CHECK_EQ(c.at(m.at(0).rect.right() - 2, m.at(0).rect.y + 2), WHITE);
+        int gray = 0;
+        for (int y = p.y; y < p.bottom(); y++)
+            for (int x = p.x; x < p.right(); x++) gray += c.at(x, y) != BLACK && c.at(x, y) != WHITE;
+        CHECK_EQ(gray, 0);
+    }
 }
 
 static void testPgm() {
@@ -735,6 +854,7 @@ int main() {
     testTouchDecoderBtnTouch();
     testConfig();
     testButtonBar();
+    testMenu();
     testPgm();
     testCanvas();
     testKeymap();

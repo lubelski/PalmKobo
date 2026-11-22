@@ -5,6 +5,8 @@
 
 #include <algorithm>
 
+#include "Glyphs.h"
+
 namespace pk {
 
 namespace {
@@ -99,20 +101,52 @@ void ButtonBar::drawText(Canvas& canvas, const std::string& text, int cx, int cy
     }
 }
 
+void ButtonBar::fillRound(Canvas& canvas, Rect r, int radius, uint8_t v, Rect clip) {
+    radius = std::max(0, std::min({radius, r.w / 2, r.h / 2}));
+    for (int y = 0; y < r.h; y++) {
+        // How far the corner arc eats into this row.
+        int inset = 0;
+        const int dy = y < radius ? radius - y : (y >= r.h - radius ? y - (r.h - radius - 1) : 0);
+        if (dy > 0) {
+            int dx = 0;
+            while (dx < radius && (2 * (radius - dx) - 1) * (2 * (radius - dx) - 1) + (2 * dy - 1) * (2 * dy - 1) >
+                                      4 * radius * radius)
+                dx++;
+            inset = dx;
+        }
+        canvas.fill(Rect{r.x + inset, r.y + y, r.w - 2 * inset, 1}.intersected(clip), v);
+    }
+}
+
 void ButtonBar::layout(const Rect& bar) {
     area = bar;
-    buttons = {{BarAction::App1, "DATE", {}},   {BarAction::App2, "ADDR", {}},
-               {BarAction::App3, "TODO", {}},   {BarAction::App4, "MEMO", {}},
-               {BarAction::Up, "^", {}},        {BarAction::Down, "v", {}},
-               {BarAction::Refresh, "RFSH", {}}, {BarAction::Power, "PWR", {}},
-               {BarAction::Exit, "EXIT", {}}};
+    buttons.clear();
+    if (bar.empty()) return;
 
-    const int n = static_cast<int>(buttons.size());
-    const int gap = std::max(4, bar.w / 120);
-    const int bw = (bar.w - gap * (n - 1)) / n;
-    const int extra = bar.w - (bw * n + gap * (n - 1));
-    for (int i = 0; i < n; i++)
-        buttons[i].rect = {bar.x + extra / 2 + i * (bw + gap), bar.y, bw, bar.h};
+    if (vertical()) {
+        // Rail: the Palm keys from the top, the menu button at the bottom.
+        const BarAction order[] = {BarAction::App1, BarAction::App2, BarAction::App3, BarAction::App4,
+                                   BarAction::Up,   BarAction::Down, BarAction::Menu};
+        const int n = 7;
+        for (int i = 0; i < n; i++) {
+            const int y0 = bar.y + bar.h * i / n, y1 = bar.y + bar.h * (i + 1) / n;
+            buttons.push_back({order[i], {bar.x, y0, bar.w, y1 - y0}});
+        }
+        return;
+    }
+
+    // Strip, arranged like the front of a Palm: two application keys, the scroll
+    // keys in the middle, two more application keys. The menu button sits apart at
+    // the right end.
+    const BarAction order[] = {BarAction::App1, BarAction::App2, BarAction::Up,
+                               BarAction::Down, BarAction::App3, BarAction::App4};
+    const int menuW = std::min(bar.w / 7, bar.h + bar.h / 4);
+    const int keysW = bar.w - menuW;
+    for (int i = 0; i < 6; i++) {
+        const int x0 = bar.x + keysW * i / 6, x1 = bar.x + keysW * (i + 1) / 6;
+        buttons.push_back({order[i], {x0, bar.y, x1 - x0, bar.h}});
+    }
+    buttons.push_back({BarAction::Menu, {bar.x + keysW, bar.y, menuW, bar.h}});
 }
 
 int ButtonBar::hit(int x, int y) const {
@@ -129,25 +163,81 @@ int ButtonBar::indexOf(BarAction a) const {
 
 Rect ButtonBar::draw(Canvas& canvas, int index) const {
     if (index < 0) {
-        Rect dirty = area;
-        canvas.fill(area, WHITE);
+        canvas.fill(area, BLACK);
         for (int i = 0; i < count(); i++) draw(canvas, i);
-        return dirty;
+        return area;
     }
 
     const Button& b = buttons[index];
-    const uint8_t bg = b.pressed ? BLACK : WHITE, fg = b.pressed ? WHITE : BLACK;
-    const int border = std::max(2, b.rect.h / 40);
+    const Rect cell = b.rect;
+    canvas.fill(cell, BLACK);
 
-    canvas.fill(b.rect, bg);
-    canvas.frame(b.rect, border, BLACK);
+    // Pure black and white only: the bar is refreshed with the fast waveform.
+    const uint8_t fg = b.pressed ? BLACK : WHITE;
+    const int cx = cell.x + cell.w / 2, cy = cell.y + cell.h / 2;
+    const int across = vertical() ? area.w : area.h;  // short side of the bar
+    const int d = std::max(8, std::min({across - std::max(8, across / 8), cell.w - 4, cell.h - 4}));
+    const int line = std::max(3, d / 22);
+    // Largest whole-number icon scale whose diagonal still fits inside the ring.
+    auto iconScale = [](int inner) { return std::max(1, inner * 100 / (Icon::SIZE * 141)); };
 
-    // Largest integer pixel size that fits the label with some padding.
-    int pixel = std::max(1, (b.rect.h * 2 / 5) / GLYPH_H);
-    while (pixel > 1 && textWidth(b.label, pixel) > b.rect.w - 10 * border) pixel--;
-    drawText(canvas, b.label, b.rect.x + b.rect.w / 2, b.rect.y + b.rect.h / 2, pixel, fg);
+    switch (b.action) {
+        case BarAction::App1:
+        case BarAction::App2:
+        case BarAction::App3:
+        case BarAction::App4: {
+            static const Icon* const art[] = {&icons::DateBook, &icons::Address, &icons::ToDo, &icons::Memo};
+            const Rect disc{cx - d / 2, cy - d / 2, d, d};
+            fillRound(canvas, disc, d / 2, WHITE, cell);
+            if (!b.pressed)
+                fillRound(canvas, {disc.x + line, disc.y + line, d - 2 * line, d - 2 * line}, d / 2 - line,
+                          BLACK, cell);
+            drawIcon(canvas, *art[static_cast<int>(b.action)], cx, cy, iconScale(d - 2 * line), fg);
+        } break;
 
-    return b.rect;
+        case BarAction::Up:
+        case BarAction::Down: {
+            // The two scroll keys share one pill; each cell draws its half of it.
+            const bool up = b.action == BarAction::Up;
+            Rect pill;
+            if (vertical()) {
+                const int len = std::min(2 * cell.h - 8, 3 * d);
+                const int mid = up ? cell.bottom() : cell.y;
+                pill = {cx - d / 2, mid - len / 2, d, len};
+            } else {
+                const int len = std::min(2 * cell.w - 8, 3 * d);
+                const int mid = up ? cell.right() : cell.x;
+                pill = {mid - len / 2, cy - d / 2, len, d};
+            }
+            fillRound(canvas, pill, d / 2, WHITE, cell);
+            if (!b.pressed)
+                fillRound(canvas, {pill.x + line, pill.y + line, pill.w - 2 * line, pill.h - 2 * line},
+                          d / 2 - line, BLACK, cell);
+            // A thin divider between the halves.
+            const Rect half = pill.intersected(cell);
+            if (vertical())
+                canvas.fill({half.x, up ? half.bottom() - line / 2 : half.y, half.w, line / 2},
+                            b.pressed ? BLACK : WHITE);
+            else
+                canvas.fill({up ? half.right() - line / 2 : half.x, half.y, line / 2, half.h},
+                            b.pressed ? BLACK : WHITE);
+            drawIcon(canvas, up ? icons::Up : icons::Down, half.x + half.w / 2, half.y + half.h / 2,
+                     iconScale(d - 2 * line), fg);
+        } break;
+
+        case BarAction::Menu: {
+            // Square, to set it apart from the round Palm keys.
+            const int side = d * 4 / 5;
+            const Rect box{cx - side / 2, cy - side / 2, side, side};
+            fillRound(canvas, box, side / 6, WHITE, cell);
+            if (!b.pressed)
+                fillRound(canvas, {box.x + line, box.y + line, side - 2 * line, side - 2 * line},
+                          side / 6 - line, BLACK, cell);
+            drawIcon(canvas, icons::Menu, cx, cy, std::max(1, (side - 4 * line) / Icon::SIZE), fg);
+        } break;
+    }
+
+    return cell;
 }
 
 }  // namespace pk

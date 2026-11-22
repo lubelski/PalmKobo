@@ -46,7 +46,6 @@ volatile std::sig_atomic_t gSignalQuit = 0;
 void onSignal(int) { gSignalQuit = 1; }
 
 constexpr uint32_t FLUSH_PIPELINE_FRAMES = 3;  // as in CloudpilotEmu's MainLoop
-constexpr uint64_t EXIT_CONFIRM_MS = 3000;
 constexpr const char* CARD_KEY = "palmkobo-card";
 
 bool fileExists(const std::string& path) {
@@ -81,8 +80,6 @@ ButtonEvent::Button palmButton(BarAction a) {
             return ButtonEvent::Button::rockerUp;
         case BarAction::Down:
             return ButtonEvent::Button::rockerDown;
-        case BarAction::Power:
-            return ButtonEvent::Button::power;
         default:
             return ButtonEvent::Button::invalid;
     }
@@ -187,13 +184,20 @@ int App::run() {
     std::string error;
     if (!startSession(error)) {
         std::cerr << "palmkobo: " << error << std::endl;
-        showMessage({"PALMKOBO CANNOT START", "", error, "",
-                     "PRESS THE POWER BUTTON", "OR TAP ANYWHERE TO EXIT"});
+        showMessage({"PALMKOBO CANNOT START", "", error, "", "TAP ANYWHERE TO EXIT"});
         messageLoop();
         return 1;
     }
 
     setupScreen();
+    if (layout.scale <= 0) {
+        // No room for the Palm or the controls: never leave a screen without an exit.
+        std::cerr << "palmkobo: the screen is too small for this device" << std::endl;
+        showMessage({"PALMKOBO CANNOT START", "", "SCREEN TOO SMALL FOR THIS PALM", "",
+                     "TAP ANYWHERE TO EXIT"});
+        messageLoop();
+        return 1;
+    }
     setupCard();
     scanInstallDir();
     const uint64_t loopStarted = nowMs();
@@ -255,7 +259,8 @@ void App::setupScreen() {
     softSilkNR70 = gSession->GetDevice().GetIDString() == "NR70";
     std::cout << "layout: palm " << layout.palmW << "x" << layout.palmH << "+" << layout.silkH
               << " at scale " << layout.scale << ", lcd @" << layout.lcd.x << "," << layout.lcd.y
-              << ", bar " << layout.bar.w << "x" << layout.bar.h << std::endl;
+              << ", " << (layout.rail ? "rail " : "bar ") << layout.bar.w << "x" << layout.bar.h
+              << std::endl;
 
     canvas.fill(canvas.bounds(), WHITE);
     canvas.frame({layout.palm.x - 3, layout.palm.y - 3, layout.palm.w + 6, layout.palm.h + 6}, 2, BLACK);
@@ -389,13 +394,6 @@ void App::mainLoop() {
             penMovePending = false;
         }
 
-        if (exitArmed && now - exitArmedAt > EXIT_CONFIRM_MS) {
-            exitArmed = false;
-            const int i = bar.indexOf(BarAction::Exit);
-            bar.at(i).label = "EXIT";
-            scheduler->addDirty(bar.draw(canvas, i), now);
-        }
-
         switch (idle->poll(now, target != Target::None)) {
             case IdlePolicy::Action::Autosave:
                 autosave(now);
@@ -405,7 +403,7 @@ void App::mainLoop() {
                 showStatus("NO ACTIVITY: EXITING IN 1 MINUTE. TAP TO STAY.");
                 break;
             case IdlePolicy::Action::HideWarning:
-                scheduler->addDirty(bar.draw(canvas), now);
+                hideStatus(now);
                 break;
             case IdlePolicy::Action::Exit:
                 std::cout << "idle: no input for " << config.idleExitMinutes
@@ -583,6 +581,10 @@ void App::runEmulation(uint64_t now) {
 }
 
 void App::updateLcd(uint64_t now) {
+    // The menu or a status message is drawn over the Palm screen: leave it alone.
+    // Clearing the overlay forces a full frame.
+    if (!overlay.empty()) return;
+
     const bool powerOn = gSession->IsPowerOn();
 
     if (!powerOn) {
@@ -675,7 +677,12 @@ void App::clearEcho(uint64_t now) {
 void App::handleTouch(const TouchEvent& ev, uint64_t now) {
     switch (ev.type) {
         case TouchEvent::Type::Down:
-            if (layout.palm.contains(ev.x, ev.y)) {
+            if (menuOpen) {
+                // The menu takes every touch; nothing reaches the Palm or the bar.
+                target = Target::Menu;
+                menuPressed = menu.hit(ev.x, ev.y);
+                if (menuPressed >= 0) scheduler->addDirty(menu.draw(canvas, menuPressed), now);
+            } else if (layout.palm.contains(ev.x, ev.y)) {
                 if (!gSession->IsPowerOn()) {
                     // Tapping a sleeping Palm wakes it, like pressing its power key.
                     gSession->QueueButtonEvent(ButtonEvent(ButtonEvent::Button::power, ButtonEvent::Type::press));
@@ -718,6 +725,16 @@ void App::handleTouch(const TouchEvent& ev, uint64_t now) {
                 scheduler->setPenDown(false, now);
             } else if (target == Target::Bar) {
                 barUp(targetButton, now);
+            } else if (target == Target::Menu && menuOpen) {
+                const int pressed = menuPressed;
+                menuPressed = Menu::NONE;
+                if (pressed == Menu::OUTSIDE) {
+                    closeMenu(now);  // a tap outside the panel closes it
+                } else if (pressed >= 0 && menu.hit(ev.x, ev.y) == pressed) {
+                    menuAction(menu.at(pressed).action, now);
+                } else if (pressed >= 0) {
+                    scheduler->addDirty(menu.draw(canvas), now);  // slid off the row: no action
+                }
             }
             target = Target::None;
             targetButton = -1;
@@ -738,42 +755,88 @@ void App::barDown(int index, uint64_t now) {
     scheduler->addDirty(bar.draw(canvas, index), now);
 
     const ButtonEvent::Button pb = palmButton(b.action);
-    if (b.action != BarAction::Exit && b.action != BarAction::Power && pb != ButtonEvent::Button::invalid)
+    if (pb != ButtonEvent::Button::invalid)
         gSession->QueueButtonEvent(ButtonEvent(pb, ButtonEvent::Type::press));
 }
 
 void App::barUp(int index, uint64_t now) {
     auto& b = bar.at(index);
     b.pressed = false;
+    scheduler->addDirty(bar.draw(canvas, index), now);
 
-    switch (b.action) {
-        case BarAction::Exit:
-            if (exitArmed) {
-                quit = true;
-            } else {
-                exitArmed = true;
-                exitArmedAt = now;
-                b.label = "SURE?";
-            }
+    if (b.action == BarAction::Menu)
+        openMenu(now);
+    else
+        gSession->QueueButtonEvent(ButtonEvent(palmButton(b.action), ButtonEvent::Type::release));
+}
+
+// ---------------------------------------------------------------------------
+// Menu and status messages, drawn over the Palm screen
+
+void App::openMenu(uint64_t now) {
+    if (!overlay.empty()) clearOverlay(now);  // replace a status message
+    menu.layout(layout.palm);
+    menuPressed = Menu::NONE;
+    menuOpen = true;
+    overlay = menu.draw(canvas);
+    scheduler->addDirty(overlay, now);
+    std::cout << "menu: opened" << std::endl;
+}
+
+void App::closeMenu(uint64_t now) {
+    if (!menuOpen) return;
+    menuOpen = false;
+    clearOverlay(now);
+    // The panel is large and high-contrast: redraw the whole panel properly
+    // (flashing) rather than leave its ghost on the Palm screen.
+    scheduler->requestFull();
+    std::cout << "menu: closed" << std::endl;
+}
+
+void App::menuAction(MenuAction action, uint64_t now) {
+    switch (action) {
+        case MenuAction::Refresh:
+            std::cout << "menu: refresh" << std::endl;
+            closeMenu(now);  // closing already does the full flashing redraw
             break;
-        case BarAction::Refresh:
-            fullRefresh();
-            break;
-        case BarAction::Power:
+        case MenuAction::Power:
+            std::cout << "menu: palm power button" << std::endl;
+            closeMenu(now);
             gSession->QueueButtonEvent(ButtonEvent(ButtonEvent::Button::power, ButtonEvent::Type::press));
             gSession->QueueButtonEvent(ButtonEvent(ButtonEvent::Button::power, ButtonEvent::Type::release));
             break;
-        default:
-            gSession->QueueButtonEvent(ButtonEvent(palmButton(b.action), ButtonEvent::Type::release));
+        case MenuAction::Exit:
+            // Opening the menu was the confirmation.
+            std::cout << "menu: exit, saving" << std::endl;
+            quit = true;
+            break;
+        case MenuAction::Close:
+            closeMenu(now);
             break;
     }
+}
 
-    scheduler->addDirty(bar.draw(canvas, index), now);
+void App::clearOverlay(uint64_t now) {
+    const Rect r = overlay;
+    overlay = {};
+    if (r.empty()) return;
+
+    // Put back what the overlay covered: the silkscreen from its saved copy, the
+    // LCD from the emulator's next (forced full) frame.
+    canvas.fill(r.intersected(layout.lcd), WHITE);
+    const Rect s = r.intersected(layout.silk);
+    for (int y = s.y; y < s.bottom(); y++) {
+        const uint8_t* src = silkBase.row(y - layout.silk.y) + (s.x - layout.silk.x);
+        std::copy(src, src + s.w, canvas.row(y) + s.x);
+    }
+    forceFullFrame = true;
+    scheduler->addDirty(r, now);
 }
 
 void App::handleKey(const KeyAction& k) {
     if (k.kind == KeyAction::Kind::Refresh) {
-        fullRefresh();
+        if (menuOpen) closeMenu(nowMs());  // includes the full refresh
+        else fullRefresh();
         return;
     }
 
@@ -827,13 +890,32 @@ void App::handleKey(const KeyAction& k) {
 // card_export_dir after removal.
 
 void App::showStatus(const std::string& text) {
-    if (layout.bar.empty()) return;
-    canvas.fill(layout.bar, WHITE);
-    canvas.frame(layout.bar, 2, BLACK);
-    int p = std::max(2, layout.bar.h / 14);
-    while (p > 1 && ButtonBar::textWidth(text, p) > layout.bar.w - 24) p--;
-    ButtonBar::drawText(canvas, text, layout.bar.x + layout.bar.w / 2, layout.bar.y + layout.bar.h / 2, p, BLACK);
-    display->present(canvas, layout.bar, Waveform::Quality);
+    // A banner across the middle of the Palm screen. (The controls are too narrow
+    // for text in the rail layout, so messages do not go there.)
+    if (layout.palm.empty()) return;
+    const uint64_t now = nowMs();
+    if (menuOpen) {
+        menuOpen = false;
+        std::cout << "menu: closed" << std::endl;
+    }
+    Rect dirty = overlay;
+    clearOverlay(now);
+
+    int p = std::max(2, layout.palm.w / 240);
+    while (p > 1 && ButtonBar::textWidth(text, p) > layout.palm.w - 80) p--;
+    const int w = std::min(layout.palm.w - 16, ButtonBar::textWidth(text, p) + 24 * p), h = 24 * p;
+    overlay = Rect{layout.palm.x + (layout.palm.w - w) / 2, layout.palm.y + (layout.palm.h - h) / 2, w, h}
+                  .intersected(layout.palm);
+    canvas.fill(overlay, BLACK);
+    canvas.fill({overlay.x + p, overlay.y + p, overlay.w - 2 * p, overlay.h - 2 * p}, WHITE);
+    ButtonBar::drawText(canvas, text, overlay.x + overlay.w / 2, overlay.y + overlay.h / 2, p, BLACK);
+    dirty = dirty.united(overlay);
+    display->present(canvas, dirty, Waveform::Quality);
+}
+
+void App::hideStatus(uint64_t now) {
+    if (menuOpen) return;  // the menu owns the overlay
+    clearOverlay(now);
 }
 
 void App::runFor(uint64_t ms) {
@@ -847,14 +929,16 @@ void App::runFor(uint64_t ms) {
 
 void App::autosave(uint64_t now) {
     const uint64_t started = nowMs();
-    showStatus("SAVING...");
+    // Not while the menu is open: the save still happens, just without the banner.
+    const bool banner = !menuOpen;
+    if (banner) showStatus("SAVING...");
     if (cardImage) {
         std::string err;
         if (!card::saveDirty(*cardImage, cardFile, err)) std::cerr << "card: " << err << std::endl;
     }
     const bool ok = saveSession();
     idle->saved(nowMs());
-    scheduler->addDirty(bar.draw(canvas), nowMs());
+    if (banner) hideStatus(nowMs());
     std::cout << "autosave " << (ok ? "done" : "FAILED") << " in " << (nowMs() - started) << " ms" << std::endl;
     (void)now;
 }
