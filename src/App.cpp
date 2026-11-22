@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <linux/input.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cctype>
@@ -127,6 +128,15 @@ uint64_t nowMs() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                      std::chrono::steady_clock::now().time_since_epoch())
                                      .count());
+}
+
+// Prints the input log lines and pushes them to disk, so that they are still in
+// palmkobo.log if the Kobo has to be hard-rebooted afterwards.
+static void printLog(const InputBatch& batch) {
+    if (batch.log.empty()) return;
+    for (const auto& line : batch.log) std::cout << line;
+    std::cout << std::flush;
+    fsync(STDOUT_FILENO);
 }
 
 App::App(Config c, Options o) : config(std::move(c)), options(std::move(o)) {}
@@ -403,7 +413,7 @@ void App::mainLoop() {
 
         batch.clear();
         pollInput(waitTimeout(nowMs()), batch, quit);
-        for (const auto& line : batch.log) std::cout << line << std::flush;
+        printLog(batch);
         if (!batch.touches.empty() || !batch.keys.empty()) {
             // A tap that dismisses the idle warning is not passed on to the Palm.
             if (idle->warningShown() && !batch.touches.empty() &&
@@ -432,6 +442,7 @@ void App::messageLoop() {
     while (!done) {
         batch.clear();
         pollInput(100, batch, done);
+        printLog(batch);
         for (const auto& ev : batch.touches)
             if (ev.type == TouchEvent::Type::Up) done = true;
         if (batch.power) done = true;
@@ -512,7 +523,7 @@ void App::touchTestLoop() {
     while (!done) {
         batch.clear();
         pollInput(200, batch, done);
-        for (const auto& line : batch.log) std::cout << line << std::flush;
+        printLog(batch);
         if (batch.power) done = true;
         bool changed = !batch.log.empty();
         for (const auto& ev : batch.touches)
