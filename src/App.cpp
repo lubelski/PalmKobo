@@ -443,6 +443,7 @@ void App::touchTestLoop() {
     // and echoes keyboard input (to check a Bluetooth keyboard is seen).
     std::string touchInfo, keyInfo;
     int crossX = -1, crossY = -1;
+    const Rect exitRect = touchTestExitRect(canvas.w(), canvas.h());
 
     auto redraw = [&]() {
         canvas.fill(canvas.bounds(), WHITE);
@@ -455,8 +456,11 @@ void App::touchTestLoop() {
                             canvas.h() / 4 + 22 * p, small, BLACK);
         ButtonBar::drawText(canvas, "TYPE ON YOUR KEYBOARD TO TEST IT.", canvas.w() / 2,
                             canvas.h() / 4 + 32 * p, small, BLACK);
-        ButtonBar::drawText(canvas, "POWER BUTTON EXITS.", canvas.w() / 2, canvas.h() / 4 + 42 * p,
-                            small, BLACK);
+        ButtonBar::drawText(canvas, "TAP EXIT OR PRESS POWER TO LEAVE.", canvas.w() / 2,
+                            canvas.h() / 4 + 42 * p, small, BLACK);
+        canvas.frame(exitRect, 2 * p, BLACK);
+        ButtonBar::drawText(canvas, "EXIT", exitRect.x + exitRect.w / 2, exitRect.y + exitRect.h / 2,
+                            2 * p, BLACK);
         const int m = 30;
         for (const auto& c : {std::pair{m, m}, std::pair{canvas.w() - m, m},
                               std::pair{m, canvas.h() - m}, std::pair{canvas.w() - m, canvas.h() - m}})
@@ -504,6 +508,7 @@ void App::touchTestLoop() {
     redraw();
     InputBatch batch;
     bool done = false;
+    bool exitArmed = false;  // the current touch went down on the EXIT button
     while (!done) {
         batch.clear();
         pollInput(200, batch, done);
@@ -511,7 +516,12 @@ void App::touchTestLoop() {
         if (batch.power) done = true;
         bool changed = !batch.log.empty();
         for (const auto& ev : batch.touches)
-            if (ev.type == TouchEvent::Type::Down) {
+            if (ev.type == TouchEvent::Type::Up) {
+                if (exitArmed && exitRect.contains(ev.x, ev.y)) done = true;
+                exitArmed = false;
+            } else if (ev.type == TouchEvent::Type::Down) {
+                exitArmed = exitRect.contains(ev.x, ev.y);
+                if (exitArmed) continue;  // a tap on EXIT does not move the cross
                 crossX = ev.x;
                 crossY = ev.y;
                 touchInfo = "X=" + std::to_string(ev.x) + " Y=" + std::to_string(ev.y);

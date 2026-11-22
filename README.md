@@ -158,7 +158,8 @@ upstream commits in `SOURCES.txt` complete the corresponding source. Bump
 4. Eject, then open NickelMenu → **PalmOS input test** first. Tap near each
    corner. The cross should appear under your finger. If it doesn't, set
    `touch_swap_axes`, `touch_mirror_x` and `touch_mirror_y` in `palmkobo.ini`
-   (0/1, instead of `auto`). Press the Kobo's power button to leave the test.
+   (0/1, instead of `auto`). Tap **EXIT** in the middle of the screen,
+   or press the Kobo's power button, to leave the test.
 5. NickelMenu → **PalmOS**.
 
 **RFSH** does a full flashing redraw of the screen, to clear e‑ink ghosting.
