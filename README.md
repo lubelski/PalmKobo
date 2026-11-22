@@ -251,6 +251,37 @@ Settings: `card`, `card_size_mb`, `card_import_dir`, `card_export_dir` in
 
 Set either one to 0 to turn it off.
 
+## Sony Clie NR70 series
+
+CloudpilotEmu also emulates the Sony Clie NR70 family (device ID `NR70`), and
+palmkobo can run it. It has been tried on the desktop build with an NR70V ROM:
+setup, digitizer calibration, the launcher, Graffiti and the card all work.
+`kobo/nickelmenu-palmkobo` has a commented entry for it, which starts palmkobo
+with `rom=nr70.rom device=NR70 session=session-nr70.img`.
+
+What is different from the m500:
+
+- **Screen:** 320×480 in 16-bit colour, shown in grays. On a Clara BW it only
+  fits at 2× (640×960), about the size of the real Clie's screen. The button
+  bar uses the full panel width so its labels stay readable.
+- **Silkscreen:** the Clie has no printed Graffiti area. Palm OS draws a soft
+  one, and a status bar, at the bottom of its own screen, so palmkobo draws no
+  silkscreen art and no Graffiti echo. Palm OS draws the stroke itself.
+- **Keyboard:** Esc/F5 (Menu), F6/Home and F7 (Find) tap the icons in the
+  status bar. F8 (Calculator) does nothing, because that icon only exists in
+  the soft Graffiti area, which apps can collapse.
+- **Buttons:** the bar's four app keys, scroll keys and power work. The jog
+  dial and the Back button are not available: CloudpilotEmu has no input
+  events for them.
+- **Card:** `card.img` is inserted as a Memory Stick. The same image works for
+  the m500, so the two can share it.
+- **Speed:** the Clie's 66 MHz CPU needs roughly three times the emulation
+  work of the m500. Speed on the Kobo itself has not been measured. On exit,
+  `palmkobo.log` gets a line like `emulation: busy 40% of 300 s, 0 catch-ups`.
+  Near 100% busy, or many catch-ups, means the Palm is running slower than
+  real time.
+- No sound, camera, MP3 player or other Sony hardware.
+
 ## How it works
 
 - **Emulation:** CloudpilotEmu's core is built straight from its own Makefiles

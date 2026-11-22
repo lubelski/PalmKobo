@@ -162,6 +162,12 @@ If you also have a ROM dumped from a Palm m515 (colour, shown in grays):
   3. Eject (restart the Kobo if the menu entry doesn't appear).
 The m515 keeps its own saved state (session-m515.img) and shares the SD card.
 
+A Sony Clie NR70 series ROM works the same way: copy it to
+.adds/palmkobo/nr70.rom and remove the # from the "PalmOS NR70" line. Its
+hi-res screen is shown smaller (about the size of the real Clie's), it draws
+its own Graffiti area at the bottom of the screen, and the jog dial and Back
+button are not available. It may run slowly on the Kobo.
+
 
 SETTINGS
 --------

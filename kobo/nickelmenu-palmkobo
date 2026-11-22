@@ -7,3 +7,7 @@ menu_item :main :PalmOS input test :cmd_spawn :quiet:exec /bin/sh /mnt/onboard/.
 # Second Palm: an m515 (colour, shown in grays) with its own saved state.
 # Put your m515 ROM in .adds/palmkobo as m515.rom and remove the # below.
 #menu_item :main :PalmOS m515 :cmd_spawn :quiet:exec /bin/sh /mnt/onboard/.adds/palmkobo/palmkobo.sh rom=m515.rom device=PalmM515 session=session-m515.img
+
+# Sony Clie NR70 series (320x480 hi-res colour, shown in grays) with its own saved state.
+# Put your NR70 ROM in .adds/palmkobo as nr70.rom and remove the # below.
+#menu_item :main :PalmOS NR70 :cmd_spawn :quiet:exec /bin/sh /mnt/onboard/.adds/palmkobo/palmkobo.sh rom=nr70.rom device=NR70 session=session-nr70.img

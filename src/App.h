@@ -93,6 +93,7 @@ class App {
     Canvas canvas;
     Canvas silkBase;  // pristine silkscreen artwork, for erasing Graffiti echo
     Layout layout;
+    bool softSilkNR70{false};  // Clie NR70: Palm OS draws the silkscreen inside the LCD
     ButtonBar bar;
     std::unique_ptr<RefreshScheduler> scheduler;
     std::unique_ptr<Frame> frame;
@@ -103,6 +104,8 @@ class App {
     // Emulation clock (mirrors CloudpilotEmu's native MainLoop)
     uint64_t millisOffset{0};
     double clockEmu{0};
+    uint64_t emuBusyUs{0};    // time spent inside the emulator core
+    unsigned emuCatchUps{0};  // times the emulated clock fell > 500 ms behind
     uint32_t flushPipelineCounter{0};
     bool lastPowerOn{false};
     bool forceFullFrame{true};

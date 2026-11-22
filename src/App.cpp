@@ -196,7 +196,13 @@ int App::run() {
     setupScreen();
     setupCard();
     scanInstallDir();
+    const uint64_t loopStarted = nowMs();
     mainLoop();
+    // How hard the emulator works on this device: near 100% busy, or many catch-ups,
+    // means the Palm runs slower than real time.
+    const uint64_t loopMs = std::max<uint64_t>(1, nowMs() - loopStarted);
+    std::cout << "emulation: busy " << emuBusyUs / 10 / loopMs << "% of " << loopMs / 1000
+              << " s, " << emuCatchUps << " catch-ups" << std::endl;
 
     ejectCard();
     if (!saveSession()) std::cerr << "palmkobo: WARNING: failed to save session" << std::endl;
@@ -246,6 +252,7 @@ void App::setupScreen() {
     layout = Layout::compute(canvas.w(), canvas.h(), static_cast<int>(dims.Width()),
                              static_cast<int>(dims.Height()), static_cast<int>(dims.SilkscreenHeight()),
                              config.scale);
+    softSilkNR70 = gSession->GetDevice().GetIDString() == "NR70";
     std::cout << "layout: palm " << layout.palmW << "x" << layout.palmH << "+" << layout.silkH
               << " at scale " << layout.scale << ", lcd @" << layout.lcd.x << "," << layout.lcd.y
               << ", bar " << layout.bar.w << "x" << layout.bar.h << std::endl;
@@ -558,13 +565,20 @@ void App::runEmulation(uint64_t now) {
     const uint32_t clocksPerSecond = gSession->GetClocksPerSecond();
     const double elapsed = static_cast<double>(now - millisOffset);
 
-    if (elapsed - clockEmu > 500) clockEmu = elapsed - 10;
+    if (elapsed - clockEmu > 500) {
+        clockEmu = elapsed - 10;
+        emuCatchUps++;
+    }
 
     const long cycles = static_cast<long>((elapsed - clockEmu) * clocksPerSecond / 1000.);
     if (cycles <= 0) return;
 
+    const auto started = std::chrono::steady_clock::now();
     long passed = 0;
     while (passed < cycles) passed += gSession->RunEmulation(static_cast<uint32>(cycles - passed));
+    emuBusyUs += static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                           std::chrono::steady_clock::now() - started)
+                                           .count());
     clockEmu += static_cast<double>(passed) / (static_cast<double>(clocksPerSecond) / 1000.);
 }
 
@@ -795,8 +809,8 @@ void App::handleKey(const KeyAction& k) {
         case KeyAction::Kind::SilkTap: {
             if (target == Target::Palm) break;  // don't interfere with a finger on the screen
             int x = 0, y = 0;
-            silkIconPosition(k.icon, x, y);
-            if (layout.silkH <= 0) break;
+            if (layout.silkH > 0) silkIconPosition(k.icon, x, y);
+            else if (!softSilkNR70 || !silkIconPositionNR70(k.icon, x, y)) break;
             gSession->QueuePenEvent(PenEvent::down(x, y));
             gSession->QueuePenEvent(PenEvent::up());
         } break;
