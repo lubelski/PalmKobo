@@ -1,0 +1,6 @@
+# Worktrees and build output.
+/.wt/
+/build/
+
+# ROM images. They are copyrighted and never belong in the repo.
+/roms/
