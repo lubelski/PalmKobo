@@ -20,7 +20,8 @@ from NickelMenu.
 The strip has the Palm's keys as icons, arranged as on a Palm: Date Book and
 Address, the scroll keys, To Do and Memo. The square button at the right opens
 palmkobo's own menu over the Palm screen: refresh, the Palm's power button,
-exit. A screen that is tall for the panel (a 320×480 Clie) gets the full
+exit. Everything around the Palm screen is black, like the case of a handheld.
+A screen that is tall for the panel (a 320×480 Clie) gets the full
 height instead, with the same buttons in a rail down the right-hand side.
 
 ## Status
@@ -168,8 +169,9 @@ upstream commits in `SOURCES.txt` complete the corresponding source. Bump
    or press the Kobo's power button, to leave the test.
 5. NickelMenu → **PalmOS**.
 
-**The menu** (the square button with three bars) covers part of the Palm
-screen while it is open. Taps go to the menu only; a tap outside it closes it.
+**The menu** (the square button with three bars) opens as a popover next to
+its button, over a corner of the Palm screen. Taps go to the menu only; a tap
+outside it closes it, and only the part it covered is redrawn.
 
 - **Refresh screen** does a full flashing redraw, to clear e‑ink ghosting.
   It's handled by palmkobo; the Palm never sees it.

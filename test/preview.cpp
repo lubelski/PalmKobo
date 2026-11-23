@@ -29,9 +29,9 @@ void save(const Canvas& c, const std::string& path) {
 // One mock-up: a Palm of the given size on a 1072x1448 panel.
 void render(const std::string& path, const char* silkPath, int palmW, int palmH, int silkH, int pressed,
             bool menuOpen) {
-    Canvas c(1072, 1448, WHITE);
+    Canvas c(1072, 1448, BLACK);
     const Layout l = Layout::compute(c.w(), c.h(), palmW, palmH, silkH);
-    c.frame({l.palm.x - 3, l.palm.y - 3, l.palm.w + 6, l.palm.h + 6}, 2, BLACK);
+    c.fill(l.palm, WHITE);
 
     const GrayImage art = loadPgm(silkPath);
     if (art.valid() && !l.silk.empty()) c.drawResampled(art.pixels.data(), art.w, art.h, l.silk);
@@ -74,7 +74,7 @@ void render(const std::string& path, const char* silkPath, int palmW, int palmH,
 
     if (menuOpen) {
         Menu menu;
-        menu.layout(l.palm);
+        menu.layout(l.palm, bar.at(bar.indexOf(BarAction::Menu)).rect, l.rail);
         menu.draw(c, 1);  // second row shown pressed
     }
 

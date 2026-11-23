@@ -22,6 +22,10 @@ enum class BarAction { App1, App2, App3, App4, Up, Down, Menu };
 
 class ButtonBar {
    public:
+    // The quiet gray used for outlines: key rings here, the menu's border. The
+    // panel has 16 gray levels; this is level 7, dim against the black strip.
+    static constexpr uint8_t CHROME = 0x77;
+
     struct Button {
         BarAction action;
         Rect rect;  // touch cell; the drawn button is centred in it

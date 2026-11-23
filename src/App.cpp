@@ -262,8 +262,9 @@ void App::setupScreen() {
               << ", " << (layout.rail ? "rail " : "bar ") << layout.bar.w << "x" << layout.bar.h
               << std::endl;
 
-    canvas.fill(canvas.bounds(), WHITE);
-    canvas.frame({layout.palm.x - 3, layout.palm.y - 3, layout.palm.w + 6, layout.palm.h + 6}, 2, BLACK);
+    // Everything around the Palm screen is black: the "plastic" it sits in.
+    canvas.fill(canvas.bounds(), BLACK);
+    canvas.fill(layout.lcd, WHITE);
     drawSilkscreen();
     bar.layout(layout.bar);
     bar.draw(canvas);
@@ -775,7 +776,8 @@ void App::barUp(int index, uint64_t now) {
 
 void App::openMenu(uint64_t now) {
     if (!overlay.empty()) clearOverlay(now);  // replace a status message
-    menu.layout(layout.palm);
+    const int button = bar.indexOf(BarAction::Menu);
+    menu.layout(layout.palm, button >= 0 ? bar.at(button).rect : Rect{}, layout.rail);
     menuPressed = Menu::NONE;
     menuOpen = true;
     overlay = menu.draw(canvas);
@@ -786,10 +788,7 @@ void App::openMenu(uint64_t now) {
 void App::closeMenu(uint64_t now) {
     if (!menuOpen) return;
     menuOpen = false;
-    clearOverlay(now);
-    // The panel is large and high-contrast: redraw the whole panel properly
-    // (flashing) rather than leave its ghost on the Palm screen.
-    scheduler->requestFull();
+    clearOverlay(now);  // repaints only what the popover covered
     std::cout << "menu: closed" << std::endl;
 }
 
@@ -797,7 +796,8 @@ void App::menuAction(MenuAction action, uint64_t now) {
     switch (action) {
         case MenuAction::Refresh:
             std::cout << "menu: refresh" << std::endl;
-            closeMenu(now);  // closing already does the full flashing redraw
+            closeMenu(now);
+            fullRefresh();
             break;
         case MenuAction::Power:
             std::cout << "menu: palm power button" << std::endl;
@@ -822,7 +822,10 @@ void App::clearOverlay(uint64_t now) {
     if (r.empty()) return;
 
     // Put back what the overlay covered: the silkscreen from its saved copy, the
-    // LCD from the emulator's next (forced full) frame.
+    // LCD from the emulator's next (forced full) frame, and the black surround
+    // and controls where the menu's pointer reached out of the Palm area.
+    canvas.fill(r, BLACK);
+    bar.draw(canvas);
     canvas.fill(r.intersected(layout.lcd), WHITE);
     const Rect s = r.intersected(layout.silk);
     for (int y = s.y; y < s.bottom(); y++) {
@@ -835,8 +838,8 @@ void App::clearOverlay(uint64_t now) {
 
 void App::handleKey(const KeyAction& k) {
     if (k.kind == KeyAction::Kind::Refresh) {
-        if (menuOpen) closeMenu(nowMs());  // includes the full refresh
-        else fullRefresh();
+        if (menuOpen) closeMenu(nowMs());
+        fullRefresh();
         return;
     }
 

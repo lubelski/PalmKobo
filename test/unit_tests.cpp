@@ -475,17 +475,21 @@ static void testButtonBar() {
 
     Canvas c(1072, 1448);
     CHECK(b.draw(c) == l.bar);
-    // White on black, and nothing but pure black and white (fast waveform).
+    // White icons on black, with a thin gray ring; no other shades.
     const Rect r0 = b.at(0).rect;
-    int dark = 0, light = 0, gray = 0;
+    int dark = 0, light = 0, ring = 0, other = 0;
     for (int y = l.bar.y; y < l.bar.bottom(); y++)
         for (int x = l.bar.x; x < l.bar.right(); x++) {
             const uint8_t v = c.at(x, y);
-            if (v != BLACK && v != WHITE) gray++;
-            if (r0.contains(x, y)) (v == BLACK ? dark : light)++;
+            if (v != BLACK && v != WHITE && v != ButtonBar::CHROME) other++;
+            if (!r0.contains(x, y)) continue;
+            if (v == BLACK) dark++;
+            else if (v == WHITE) light++;
+            else ring++;
         }
-    CHECK_EQ(gray, 0);
-    CHECK(dark > light && light > 500);
+    CHECK_EQ(other, 0);
+    CHECK(dark > light && light > 300);
+    CHECK(ring > 100 && ring < light);  // quieter than the icon it surrounds
     CHECK_EQ(c.at(r0.x + 1, r0.y + 1), BLACK);
     CHECK_EQ(c.at(l.bar.x - 1, l.bar.y), WHITE);  // nothing drawn outside the bar
 
@@ -496,6 +500,10 @@ static void testButtonBar() {
     for (int y = r0.y; y < r0.bottom(); y++)
         for (int x = r0.x; x < r0.right(); x++) lightPressed += c.at(x, y) == WHITE;
     CHECK(lightPressed > 2 * light);
+    int ringPressed = 0;
+    for (int y = r0.y; y < r0.bottom(); y++)
+        for (int x = r0.x; x < r0.right(); x++) ringPressed += c.at(x, y) == ButtonBar::CHROME;
+    CHECK_EQ(ringPressed, 0);  // pure black and white while pressed
     CHECK_EQ(c.at(r0.x + 1, r0.y + 1), BLACK);
 
     // Rail beside a tall screen: the same buttons stacked, menu at the bottom.
@@ -530,46 +538,83 @@ static void testButtonBar() {
 
 static void testMenu() {
     for (const Layout& l : {Layout::compute(1072, 1448, 160, 160, 60), Layout::compute(1072, 1448, 320, 480, 0)}) {
+        ButtonBar bar;
+        bar.layout(l.bar);
+        const Rect button = bar.at(bar.indexOf(BarAction::Menu)).rect;
         Menu m;
-        m.layout(l.palm);
+        m.layout(l.palm, button, l.rail);
         const Rect p = m.panel();
-        // Inside the Palm area, so closing it only has to repaint the Palm screen.
+        // Inside the Palm area, against the edge nearest the menu button.
         CHECK(p == p.intersected(l.palm));
         CHECK(!p.empty());
+        if (l.rail) {
+            CHECK_EQ(p.right(), l.palm.right());    // left of the button
+            CHECK_EQ(p.bottom(), button.bottom());  // bottoms aligned
+        } else {
+            CHECK_EQ(p.bottom(), l.palm.bottom());  // above the button
+            CHECK_EQ(p.right(), button.right());    // right edges aligned
+        }
+        // The pointer bridges the gap and ends inside the button's cell, aimed at its middle.
+        const Rect all = m.bounds();
+        CHECK(all == all.united(p));
+        if (l.rail) {
+            CHECK(all.right() > button.x && all.right() < button.x + button.w / 4);
+            CHECK(all.y == p.y && all.bottom() == p.bottom());
+        } else {
+            CHECK(all.bottom() > button.y && all.bottom() < button.y + button.h / 4);
+            CHECK(all.x == p.x && all.right() == p.right());
+        }
+
         CHECK_EQ(m.count(), 4);
         const MenuAction order[] = {MenuAction::Refresh, MenuAction::Power, MenuAction::Exit, MenuAction::Close};
         for (int i = 0; i < m.count(); i++) {
             const Rect r = m.at(i).rect;
             CHECK(m.at(i).action == order[i]);
-            CHECK(r.h >= 130);
+            CHECK(r.h >= 130);  // finger sized: 11 mm at 300 ppi
+            CHECK(r.w >= 500);
             CHECK(r == r.intersected(p));
             CHECK_EQ(m.hit(r.x + r.w / 2, r.y + r.h / 2), i);
             CHECK_EQ(m.hit(r.x, r.y), i);
             CHECK_EQ(m.hit(r.right() - 1, r.bottom() - 1), i);
             if (i > 0) CHECK_EQ(r.y, m.at(i - 1).rect.bottom());
         }
-        // Border of the panel: on the menu, but no row. Everything else is outside.
+        // Border of the panel: on the menu, but no row. Everything else is outside,
+        // including the pointer and the menu button itself (tapping it closes the menu).
         CHECK_EQ(m.hit(p.x, p.y), Menu::NONE);
         CHECK_EQ(m.hit(p.x - 1, p.y + 10), Menu::OUTSIDE);
-        CHECK_EQ(m.hit(p.x + 10, p.bottom()), Menu::OUTSIDE);
-        CHECK_EQ(m.hit(l.bar.x + l.bar.w / 2, l.bar.y + l.bar.h / 2), Menu::OUTSIDE);
+        CHECK_EQ(m.hit(p.x + 10, p.y - 1), Menu::OUTSIDE);
+        CHECK_EQ(m.hit(button.x + button.w / 2, button.y + button.h / 2), Menu::OUTSIDE);
+        CHECK_EQ(m.hit(all.right() - 1, all.bottom() - 1), l.rail ? Menu::OUTSIDE : Menu::OUTSIDE);
         CHECK_EQ(m.hit(l.palm.x + 2, l.palm.y + 2), Menu::OUTSIDE);
 
-        Canvas c(1072, 1448, 0x80);
-        CHECK(m.draw(c) == p);
-        CHECK_EQ(c.at(p.x - 1, p.y), 0x80);       // nothing outside the panel
-        CHECK_EQ(c.at(p.x, p.bottom()), 0x80);
-        CHECK_EQ(c.at(p.x, p.y), BLACK);          // frame
+        Canvas c(1072, 1448, 0x40);
+        CHECK(m.draw(c) == all);
+        CHECK_EQ(c.at(p.x - 1, p.y), 0x40);  // nothing outside the panel and pointer
+        CHECK_EQ(c.at(p.x, p.y - 1), 0x40);
+        CHECK_EQ(c.at(p.x, p.y), ButtonBar::CHROME);  // thin gray border
+        // White on black; the pressed row inverts to black on white.
         const Rect r1 = m.at(1).rect;
-        CHECK_EQ(c.at(r1.right() - 2, r1.y + 2), WHITE);
+        CHECK_EQ(c.at(r1.right() - 2, r1.y + 4), BLACK);
         m.draw(c, 1);
-        CHECK_EQ(c.at(r1.right() - 2, r1.y + 2), BLACK);  // pressed row inverts
-        CHECK_EQ(c.at(m.at(0).rect.right() - 2, m.at(0).rect.y + 2), WHITE);
-        int gray = 0;
+        CHECK_EQ(c.at(r1.right() - 2, r1.y + 4), WHITE);
+        CHECK_EQ(c.at(m.at(0).rect.right() - 2, m.at(0).rect.y + 4), BLACK);
+        int other = 0, white = 0;
         for (int y = p.y; y < p.bottom(); y++)
-            for (int x = p.x; x < p.right(); x++) gray += c.at(x, y) != BLACK && c.at(x, y) != WHITE;
-        CHECK_EQ(gray, 0);
+            for (int x = p.x; x < p.right(); x++) {
+                const uint8_t v = c.at(x, y);
+                other += v != BLACK && v != WHITE && v != ButtonBar::CHROME;
+                white += v == WHITE;
+            }
+        CHECK_EQ(other, 0);
+        CHECK(white > 1000);
     }
+
+    // No anchor (no menu button): still a usable panel, without a pointer.
+    Menu m;
+    m.layout({0, 0, 400, 300}, {}, false);
+    CHECK(m.bounds() == m.panel());
+    CHECK(m.panel() == m.panel().intersected({0, 0, 400, 300}));
+    CHECK_EQ(m.hit(m.at(3).rect.x + 5, m.at(3).rect.y + 5), 3);
 }
 
 static void testPgm() {
