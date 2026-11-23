@@ -77,6 +77,7 @@ const Glyph* findGlyph(char c) {
 }
 
 constexpr int GLYPH_W = 5, GLYPH_H = 7, GLYPH_ADVANCE = 6;
+constexpr int RING_LINE = 2;  // outline of a key at rest, in pixels
 
 }  // namespace
 
@@ -172,12 +173,13 @@ Rect ButtonBar::draw(Canvas& canvas, int index) const {
     const Rect cell = b.rect;
     canvas.fill(cell, BLACK);
 
-    // Pure black and white only: the bar is refreshed with the fast waveform.
     const uint8_t fg = b.pressed ? BLACK : WHITE;
     const int cx = cell.x + cell.w / 2, cy = cell.y + cell.h / 2;
     const int across = vertical() ? area.w : area.h;  // short side of the bar
     const int d = std::max(8, std::min({across - std::max(8, across / 8), cell.w - 4, cell.h - 4}));
-    const int line = std::max(3, d / 22);
+    // A thin gray outline at rest; a pressed key fills white instead.
+    const int line = RING_LINE;
+    const uint8_t ring = b.pressed ? WHITE : CHROME;
     // Largest whole-number icon scale whose diagonal still fits inside the ring.
     auto iconScale = [](int inner) { return std::max(1, inner * 100 / (Icon::SIZE * 141)); };
 
@@ -188,7 +190,7 @@ Rect ButtonBar::draw(Canvas& canvas, int index) const {
         case BarAction::App4: {
             static const Icon* const art[] = {&icons::DateBook, &icons::Address, &icons::ToDo, &icons::Memo};
             const Rect disc{cx - d / 2, cy - d / 2, d, d};
-            fillRound(canvas, disc, d / 2, WHITE, cell);
+            if (RING_LINE > 0 || b.pressed) fillRound(canvas, disc, d / 2, ring, cell);
             if (!b.pressed)
                 fillRound(canvas, {disc.x + line, disc.y + line, d - 2 * line, d - 2 * line}, d / 2 - line,
                           BLACK, cell);
@@ -209,18 +211,16 @@ Rect ButtonBar::draw(Canvas& canvas, int index) const {
                 const int mid = up ? cell.right() : cell.x;
                 pill = {mid - len / 2, cy - d / 2, len, d};
             }
-            fillRound(canvas, pill, d / 2, WHITE, cell);
+            if (RING_LINE > 0 || b.pressed) fillRound(canvas, pill, d / 2, ring, cell);
             if (!b.pressed)
                 fillRound(canvas, {pill.x + line, pill.y + line, pill.w - 2 * line, pill.h - 2 * line},
                           d / 2 - line, BLACK, cell);
             // A thin divider between the halves.
             const Rect half = pill.intersected(cell);
             if (vertical())
-                canvas.fill({half.x, up ? half.bottom() - line / 2 : half.y, half.w, line / 2},
-                            b.pressed ? BLACK : WHITE);
+                canvas.fill({half.x, up ? half.bottom() - 1 : half.y, half.w, 1}, b.pressed ? BLACK : CHROME);
             else
-                canvas.fill({up ? half.right() - line / 2 : half.x, half.y, line / 2, half.h},
-                            b.pressed ? BLACK : WHITE);
+                canvas.fill({up ? half.right() - 1 : half.x, half.y, 1, half.h}, b.pressed ? BLACK : CHROME);
             drawIcon(canvas, up ? icons::Up : icons::Down, half.x + half.w / 2, half.y + half.h / 2,
                      iconScale(d - 2 * line), fg);
         } break;
@@ -229,11 +229,11 @@ Rect ButtonBar::draw(Canvas& canvas, int index) const {
             // Square, to set it apart from the round Palm keys.
             const int side = d * 4 / 5;
             const Rect box{cx - side / 2, cy - side / 2, side, side};
-            fillRound(canvas, box, side / 6, WHITE, cell);
+            if (RING_LINE > 0 || b.pressed) fillRound(canvas, box, side / 6, ring, cell);
             if (!b.pressed)
                 fillRound(canvas, {box.x + line, box.y + line, side - 2 * line, side - 2 * line},
                           side / 6 - line, BLACK, cell);
-            drawIcon(canvas, icons::Menu, cx, cy, std::max(1, (side - 4 * line) / Icon::SIZE), fg);
+            drawIcon(canvas, icons::Menu, cx, cy, std::max(1, (side - 12) / Icon::SIZE), fg);
         } break;
     }
 
